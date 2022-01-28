@@ -12,7 +12,7 @@ using Microsoft.Maui.Platform;
 
 namespace Microsoft.NetConf2021.Maui.Platforms.Android.Services;
 
-[Service]
+[Service(Exported = true)]
 [IntentFilter(new[] { ActionPlay, ActionPause, ActionStop, ActionTogglePlayback, ActionNext, ActionPrevious })]
 public class MediaPlayerService : Service, 
    AudioManager.IOnAudioFocusChangeListener,

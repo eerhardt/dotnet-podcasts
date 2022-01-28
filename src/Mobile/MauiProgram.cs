@@ -10,8 +10,9 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .RegisterBlazorMauiWebView()
-            .UseMauiApp<App>()
-            .ConfigureEssentials()
+            .UseMauiApp<App>();
+        Microsoft.NetConf2021.Maui.Services.EssentialsExtensions.ConfigureEssentials(builder);
+        builder
             .ConfigureServices()
             .ConfigureViewModels()
             .ConfigureFonts(fonts =>
