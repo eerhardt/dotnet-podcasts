@@ -1,11 +1,13 @@
 ﻿using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.NetConf2021.Maui.Models.Responses;
 using MonkeyCache.FileStore;
-using Newtonsoft.Json;
 
 namespace Microsoft.NetConf2021.Maui.Services;
 
-public class ShowsService
+public partial class ShowsService
 {
     private readonly HttpClient httpClient;
     private readonly ListenLaterService listenLaterService;
@@ -18,13 +20,13 @@ public class ShowsService
 
     public async Task<IEnumerable<Category>> GetAllCategories()
     {
-        var categoryResponse = await TryGetAsync<IEnumerable<CategoryResponse>>("categories");
+        var categoryResponse = await TryGetAsync("categories", JsonContext.Default.IEnumerableCategoryResponse);
         return categoryResponse?.Select(response => new Category(response));
     }
 
     public async Task<Show> GetShowByIdAsync(Guid id)
     {
-        var showResponse = await TryGetAsync<ShowResponse>($"shows/{id}");
+        var showResponse = await TryGetAsync($"shows/{id}", JsonContext.Default.ShowResponse);
 
         return showResponse == null
             ? null
@@ -39,7 +41,7 @@ public class ShowsService
     public async Task<IEnumerable<Show>> GetShowsByCategoryAsync(Guid idCategory)
     {
         var result = new List<Show>();
-        var showsResponse = await TryGetAsync<IEnumerable<ShowResponse>>($"shows?limit=10&categoryId={idCategory}");
+        var showsResponse = await TryGetShows($"shows?limit=10&categoryId={idCategory}");
 
         if (showsResponse == null)
             return result;
@@ -56,14 +58,14 @@ public class ShowsService
 
     public async Task<IEnumerable<Show>> SearchShowsAsync(Guid idCategory, string term)
     {
-        var showsResponse = await TryGetAsync<IEnumerable<ShowResponse>>($"shows?limit=10&categoryId={idCategory}&term={term}");
+        var showsResponse = await TryGetShows($"shows?limit=10&categoryId={idCategory}&term={term}");
 
         return showsResponse?.Select(response => GetShow(response));
     }
 
     public async Task<IEnumerable<Show>> SearchShowsAsync(string term)
     {
-        var showsResponse = await TryGetAsync<IEnumerable<ShowResponse>>($"shows?limit=10&term={term}");
+        var showsResponse = await TryGetShows($"shows?limit=10&term={term}");
 
         return showsResponse?.Select(response => GetShow(response));
     }
@@ -73,16 +75,19 @@ public class ShowsService
         return new Show(response, listenLaterService);
     }
 
-    private async Task<T> TryGetAsync<T>(string path)
+    private Task<IEnumerable<ShowResponse>> TryGetShows(string path) =>
+        TryGetAsync(path, JsonContext.Default.IEnumerableShowResponse);
+
+    private async Task<T> TryGetAsync<T>(string path, JsonTypeInfo<T> jsonTypeInfo)
     {
         var json = string.Empty;
 
 #if !MACCATALYST
         if (Connectivity.NetworkAccess == NetworkAccess.None)
-            json = Barrel.Current.Get<string>(path);
+            json = Barrel.Current.Get(path, JsonContext.Default.String);
 #endif
         if (!Barrel.Current.IsExpired(path))
-            json = Barrel.Current.Get<string>(path);
+            json = Barrel.Current.Get(path, JsonContext.Default.String);
 
         T responseData = default;
         try
@@ -92,16 +97,16 @@ public class ShowsService
                 var response = await httpClient.GetAsync(path);
                 if (response.IsSuccessStatusCode)
                 {
-                    responseData = await response.Content.ReadFromJsonAsync<T>();
+                    responseData = await response.Content.ReadFromJsonAsync<T>(jsonTypeInfo);
                 }
             }
             else
             {
-                responseData = JsonConvert.DeserializeObject<T>(json);
+                responseData = JsonSerializer.Deserialize<T>(json, jsonTypeInfo);
             }
 
             if (responseData != null)
-                Barrel.Current.Add(path, responseData, TimeSpan.FromMinutes(10));
+                Barrel.Current.Add(path, responseData, TimeSpan.FromMinutes(10), jsonTypeInfo);
         }
         catch (Exception ex)
         {
@@ -109,5 +114,11 @@ public class ShowsService
         }
 
         return responseData;
+    }
+
+    [JsonSerializable(typeof(IEnumerable<CategoryResponse>))]
+    [JsonSerializable(typeof(IEnumerable<ShowResponse>))]
+    private partial class JsonContext : JsonSerializerContext
+    {
     }
 }
